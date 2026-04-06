@@ -5,8 +5,8 @@ on:
 
 env:
   TF_VAR_do_token: ${{ secrets.DO_TOKEN }}
-  AWS_ACCESS_KEY_ID: ${{ secrets.SPACES_KEY }}
-  AWS_SECRET_ACCESS_KEY: ${{ secrets.SPACES_SECRET }}
+  AWS_ACCESS_KEY_ID: ${{ secrets.SPACES_ACCESS_KEY_ID }}
+  AWS_SECRET_ACCESS_KEY: ${{ secrets.SPACES_SECRET_ACCESS_KEY }}
 
 jobs:
   terraform-destroy:
