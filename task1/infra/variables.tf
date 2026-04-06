@@ -30,7 +30,7 @@ variable "droplet_name" {
 
 variable "vpc_cidr" {
   type    = string
-  default = "10.10.10.0/24"
+  default = "10.10.11.0/24"
 }
 
 variable "droplet_size" {
