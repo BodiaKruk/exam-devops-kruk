@@ -1,0 +1,12 @@
+variable "do_token" {
+  type      = string
+  sensitive = true
+}
+
+variable "region" {
+  default = "fra1"
+}
+
+variable "project_name" {
+  default = "kruk"
+}
