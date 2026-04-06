@@ -16,7 +16,7 @@ resource "digitalocean_droplet" "node" {
   image    = var.droplet_image
   vpc_uuid = digitalocean_vpc.exam.id
   ssh_keys = [digitalocean_ssh_key.exam.id]
-  tags     = ["kalytyn-node"]
+  tags     = ["kruk-node"]
 }
 
 resource "digitalocean_firewall" "exam" {

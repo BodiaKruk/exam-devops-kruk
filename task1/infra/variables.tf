@@ -15,17 +15,17 @@ variable "region" {
 
 variable "vpc_name" {
   type    = string
-  default = "kalytyn-vpc"
+  default = "kruk-vpc"
 }
 
 variable "firewall_name" {
   type    = string
-  default = "kalytyn-firewall"
+  default = "kruk-firewall"
 }
 
 variable "droplet_name" {
   type    = string
-  default = "kalytyn-node"
+  default = "kruk-node"
 }
 
 variable "vpc_cidr" {
