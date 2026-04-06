@@ -1,6 +1,7 @@
 variable "do_token" {
-  type      = string
-  sensitive = true
+  description = "DigitalOcean API Token"
+  type        = string
+  sensitive   = true
 }
 
 variable "region" {
