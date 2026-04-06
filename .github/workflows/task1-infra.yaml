@@ -1,4 +1,4 @@
-name: task1-infra
+name: task1-infra-deploy
 
 on:
   workflow_dispatch:
