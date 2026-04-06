@@ -23,6 +23,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Check secrets presence
+        run: |
+          echo "DO_TOKEN: ${DO_TOKEN:+set}"
+          echo "SPACES_KEY: ${SPACES_KEY:+set}"
+          echo "SPACES_SECRET: ${SPACES_SECRET:+set}"
+          echo "AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:+set}"
+          echo "AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:+set}"
+        env:
+          DO_TOKEN: ${{ secrets.DO_TOKEN }}
+          SPACES_KEY: ${{ secrets.SPACES_KEY }}
+          SPACES_SECRET: ${{ secrets.SPACES_SECRET }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.SPACES_KEY }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.SPACES_SECRET }}
+
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
 
