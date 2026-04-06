@@ -1,5 +1,5 @@
 resource "digitalocean_ssh_key" "exam" {
-  name       = "kalytyn-exam-key"
+  name       = "kruk-exam-key"
   public_key = var.ssh_public_key
 }
 
