@@ -1,0 +1,138 @@
+  name: task3-deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Choose deployment environment"
+        required: true
+        default: "dev"
+        type: choice
+        options:
+          - dev
+          - release
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      packages: write
+
+    env:
+      TF_VAR_do_token: ${{ secrets.DO_TOKEN }}
+      TF_VAR_ssh_public_key: ${{ secrets.SSH_PUBLIC_KEY }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.SPACES_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.SPACES_SECRET_ACCESS_KEY }}
+
+    steps:
+      - name: Checkout exam repository
+        uses: actions/checkout@v4
+
+      - name: Set environment variables
+        id: vars
+        run: |
+          if [ "${{ inputs.environment }}" = "dev" ]; then
+            echo "source_ref=develop" >> $GITHUB_OUTPUT
+            echo "image_tag=develop" >> $GITHUB_OUTPUT
+            echo "namespace=dev" >> $GITHUB_OUTPUT
+            echo "port=8002" >> $GITHUB_OUTPUT
+            echo "values_file=values-dev.yaml" >> $GITHUB_OUTPUT
+            echo "release_name=hello-dev" >> $GITHUB_OUTPUT
+          else
+            echo "source_ref=1.0.0" >> $GITHUB_OUTPUT
+            echo "image_tag=1.0.0" >> $GITHUB_OUTPUT
+            echo "namespace=release" >> $GITHUB_OUTPUT
+            echo "port=8003" >> $GITHUB_OUTPUT
+            echo "values_file=values-prod.yaml" >> $GITHUB_OUTPUT
+            echo "release_name=hello-release" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Set lowercase owner
+        run: echo "OWNER_LC=${OWNER,,}" >> $GITHUB_ENV
+        env:
+          OWNER: ${{ github.repository_owner }}
+
+      - name: Checkout upstream app source
+        uses: actions/checkout@v4
+        with:
+          repository: YulianSalo/devops-exam-pt2
+          ref: ${{ steps.vars.outputs.source_ref }}
+          path: task3/src
+
+      - name: Login to GHCR
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      - name: Build Docker image
+        run: |
+          docker build -t ghcr.io/${OWNER_LC}/devops-exam-kalytyn:${{ steps.vars.outputs.image_tag }} task3/src
+
+      - name: Push Docker image
+        run: |
+          docker push ghcr.io/${OWNER_LC}/devops-exam-kalytyn:${{ steps.vars.outputs.image_tag }}
+
+      - name: Install Helm on runner
+        run: curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+
+      - name: Helm lint
+        run: |
+          helm lint task3/chart \
+            -f task3/chart/values.yaml \
+            -f task3/chart/${{ steps.vars.outputs.values_file }}
+
+      - name: Helm template
+        run: |
+          helm template ${{ steps.vars.outputs.release_name }} task3/chart \
+            -n ${{ steps.vars.outputs.namespace }} \
+            -f task3/chart/values.yaml \
+            -f task3/chart/${{ steps.vars.outputs.values_file }} \
+            --set image.repository=ghcr.io/${OWNER_LC}/devops-exam-kalytyn \
+            --set image.tag=${{ steps.vars.outputs.image_tag }} \
+            > rendered.yaml
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Get Droplet IP from remote state
+        id: tf
+        working-directory: task1/infra
+        run: |
+          terraform init
+          echo "ip=$(terraform output -raw droplet_ipv4)" >> $GITHUB_OUTPUT
+
+      - name: Prepare SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+
+      - name: Copy chart to server
+        run: |
+          ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa root@${{ steps.tf.outputs.ip }} "rm -rf /root/task3-chart && mkdir -p /root/task3-chart"
+          scp -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa -r task3/chart/* root@${{ steps.tf.outputs.ip }}:/root/task3-chart/
+
+      - name: Dry-run deploy on remote cluster
+        run: |
+          ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa root@${{ steps.tf.outputs.ip }} "
+            kubectl get ns ${{ steps.vars.outputs.namespace }} >/dev/null 2>&1 || kubectl create ns ${{ steps.vars.outputs.namespace }};
+            helm upgrade --install ${{ steps.vars.outputs.release_name }} /root/task3-chart \
+              -n ${{ steps.vars.outputs.namespace }} \
+              -f /root/task3-chart/values.yaml \
+              -f /root/task3-chart/${{ steps.vars.outputs.values_file }} \
+              --set image.repository=ghcr.io/${OWNER_LC}/devops-exam-kalytyn \
+              --set image.tag=${{ steps.vars.outputs.image_tag }} \
+              --dry-run
+          "
+
+      - name: Deploy to Minikube
+        run: |
+          ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa root@${{ steps.tf.outputs.ip }} "
+            helm upgrade --install ${{ steps.vars.outputs.release_name }} /root/task3-chart \
+              -n ${{ steps.vars.outputs.namespace }} \
+              --create-namespace \
+              -f /root/task3-chart/values.yaml \
+              -f /root/task3-chart/${{ steps.vars.outputs.values_file }} \
+              --set image.repository=ghcr.io/${OWNER_LC}/devops-exam-kalytyn \
+              --set image.tag=${{ steps.vars.outputs.image_tag }}
+          "

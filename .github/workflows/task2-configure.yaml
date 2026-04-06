@@ -1,0 +1,58 @@
+name: task2-configure
+
+on:
+  workflow_dispatch:
+
+jobs:
+  configure:
+    runs-on: ubuntu-latest
+
+    env:
+      TF_VAR_do_token: ${{ secrets.DO_TOKEN }}
+      TF_VAR_ssh_public_key: ${{ secrets.SSH_PUBLIC_KEY }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.SPACES_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.SPACES_SECRET_ACCESS_KEY }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Get Droplet IP from remote state
+        id: tf
+        working-directory: task1/infra
+        run: |
+          terraform init
+          echo "ip=$(terraform output -raw droplet_ipv4)" >> $GITHUB_OUTPUT
+
+      - name: Prepare SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+
+      - name: Create Ansible inventory
+        run: |
+          cat > task2/inventory.ini <<EOF
+          [kalytyn]
+          ${{ steps.tf.outputs.ip }} ansible_user=root ansible_ssh_private_key_file=~/.ssh/id_rsa
+          EOF
+
+      - name: Install Ansible
+        run: |
+          python3 -m pip install --upgrade pip
+          pip install ansible
+
+      - name: Syntax check
+        working-directory: task2
+        run: ansible-playbook -i inventory.ini playbook.yml --syntax-check
+
+      - name: Dry run
+        working-directory: task2
+        run: ansible-playbook -i inventory.ini playbook.yml --check
+
+      - name: Apply
+        working-directory: task2
+        run: ansible-playbook -i inventory.ini playbook.yml
