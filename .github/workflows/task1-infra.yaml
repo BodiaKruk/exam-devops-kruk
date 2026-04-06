@@ -2,15 +2,6 @@ name: task1-infra
 
 on:
   workflow_dispatch:
-    inputs:
-      action:
-        description: "plan or apply"
-        required: true
-        default: "plan"
-        type: choice
-        options:
-          - plan
-          - apply
 
 jobs:
   infra:
