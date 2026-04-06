@@ -6,7 +6,7 @@ terraform {
       s3 = "https://fra1.digitaloceanspaces.com"
     }
 
-    bucket = "kalytyn-bucket"
+    bucket = "kruk-bucket"
     key    = "task1/terraform.tfstate"
 
     skip_credentials_validation = true
