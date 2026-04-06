@@ -37,11 +37,9 @@ jobs:
         run: terraform plan -out=tfplan
 
       - name: Terraform Apply
-        if: ${{ inputs.action == 'apply' }}
         working-directory: task1/infra
         run: terraform apply -auto-approve tfplan
 
       - name: Show Droplet IP
-        if: ${{ inputs.action == 'apply' }}
         working-directory: task1/infra
         run: terraform output -raw droplet_ipv4
