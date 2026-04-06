@@ -1,138 +1,78 @@
-  name: task3-deploy
 
-on:
-  workflow_dispatch:
-    inputs:
-      environment:
-        description: "Choose deployment environment"
-        required: true
-        default: "dev"
-        type: choice
-        options:
-          - dev
-          - release
+  name: task3-app-deploy
 
-jobs:
-  deploy:
-    runs-on: ubuntu-latest
+  on:
+    workflow_dispatch:
+      inputs:
+        environment:
+          description: "Choose deployment environment"
+          required: true
+          default: "dev"
+          type: choice
+          options:
+            - dev
+            - release
 
-    permissions:
-      contents: read
-      packages: write
+  jobs:
+    build-and-deploy:
+      runs-on: ubuntu-latest
+      env:
+        DOCKERHUB_USER: ${{ secrets.DOCKERHUB_USER }}
+        DOCKERHUB_PASS: ${{ secrets.DOCKERHUB_PASS }}
+        KUBECONFIG: ${{ secrets.KUBECONFIG }}
+      steps:
+        - name: Set environment variables
+          id: vars
+          run: |
+            if [ "${{ inputs.environment }}" = "dev" ]; then
+              echo "source_ref=develop" >> $GITHUB_OUTPUT
+              echo "image_tag=develop" >> $GITHUB_OUTPUT
+              echo "namespace=dev" >> $GITHUB_OUTPUT
+              echo "port=8002" >> $GITHUB_OUTPUT
+            else
+              echo "source_ref=1.0.0" >> $GITHUB_OUTPUT
+              echo "image_tag=1.0.0" >> $GITHUB_OUTPUT
+              echo "namespace=release" >> $GITHUB_OUTPUT
+              echo "port=8003" >> $GITHUB_OUTPUT
+            fi
 
-    env:
-      TF_VAR_do_token: ${{ secrets.DO_TOKEN }}
-      TF_VAR_ssh_public_key: ${{ secrets.SSH_PUBLIC_KEY }}
-      AWS_ACCESS_KEY_ID: ${{ secrets.SPACES_ACCESS_KEY_ID }}
-      AWS_SECRET_ACCESS_KEY: ${{ secrets.SPACES_SECRET_ACCESS_KEY }}
+        - name: Checkout app source
+          uses: actions/checkout@v4
+          with:
+            repository: YulianSalo/devops-exam-pt2
+            ref: ${{ steps.vars.outputs.source_ref }}
+            path: app
 
-    steps:
-      - name: Checkout exam repository
-        uses: actions/checkout@v4
+        - name: Login to DockerHub
+          run: echo $DOCKERHUB_PASS | docker login -u $DOCKERHUB_USER --password-stdin
 
-      - name: Set environment variables
-        id: vars
-        run: |
-          if [ "${{ inputs.environment }}" = "dev" ]; then
-            echo "source_ref=develop" >> $GITHUB_OUTPUT
-            echo "image_tag=develop" >> $GITHUB_OUTPUT
-            echo "namespace=dev" >> $GITHUB_OUTPUT
-            echo "port=8002" >> $GITHUB_OUTPUT
-            echo "values_file=values-dev.yaml" >> $GITHUB_OUTPUT
-            echo "release_name=hello-dev" >> $GITHUB_OUTPUT
-          else
-            echo "source_ref=1.0.0" >> $GITHUB_OUTPUT
-            echo "image_tag=1.0.0" >> $GITHUB_OUTPUT
-            echo "namespace=release" >> $GITHUB_OUTPUT
-            echo "port=8003" >> $GITHUB_OUTPUT
-            echo "values_file=values-prod.yaml" >> $GITHUB_OUTPUT
-            echo "release_name=hello-release" >> $GITHUB_OUTPUT
-          fi
+        - name: Build Docker image
+          run: |
+            docker build -t $DOCKERHUB_USER/devops-exam:${{ steps.vars.outputs.image_tag }} app
 
-      - name: Set lowercase owner
-        run: echo "OWNER_LC=${OWNER,,}" >> $GITHUB_ENV
-        env:
-          OWNER: ${{ github.repository_owner }}
+        - name: Push Docker image
+          run: |
+            docker push $DOCKERHUB_USER/devops-exam:${{ steps.vars.outputs.image_tag }}
 
-      - name: Checkout upstream app source
-        uses: actions/checkout@v4
-        with:
-          repository: YulianSalo/devops-exam-pt2
-          ref: ${{ steps.vars.outputs.source_ref }}
-          path: task3/src
+        - name: Set up kubectl
+          uses: azure/setup-kubectl@v3
 
-      - name: Login to GHCR
-        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+        - name: Set KUBECONFIG
+          run: echo "$KUBECONFIG" > $HOME/.kube/config
 
-      - name: Build Docker image
-        run: |
-          docker build -t ghcr.io/${OWNER_LC}/devops-exam-kalytyn:${{ steps.vars.outputs.image_tag }} task3/src
+        - name: Create namespace if not exists
+          run: |
+            kubectl get ns ${{ steps.vars.outputs.namespace }} || kubectl create ns ${{ steps.vars.outputs.namespace }}
 
-      - name: Push Docker image
-        run: |
-          docker push ghcr.io/${OWNER_LC}/devops-exam-kalytyn:${{ steps.vars.outputs.image_tag }}
+        - name: Validate manifests (dry-run)
+          run: |
+            kubectl apply -f k8s/${{ steps.vars.outputs.namespace }}/ --dry-run=client -n ${{ steps.vars.outputs.namespace }}
 
-      - name: Install Helm on runner
-        run: curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+        - name: Deploy to DOKS
+          run: |
+            kubectl apply -f k8s/${{ steps.vars.outputs.namespace }}/ -n ${{ steps.vars.outputs.namespace }}
 
-      - name: Helm lint
-        run: |
-          helm lint task3/chart \
-            -f task3/chart/values.yaml \
-            -f task3/chart/${{ steps.vars.outputs.values_file }}
-
-      - name: Helm template
-        run: |
-          helm template ${{ steps.vars.outputs.release_name }} task3/chart \
-            -n ${{ steps.vars.outputs.namespace }} \
-            -f task3/chart/values.yaml \
-            -f task3/chart/${{ steps.vars.outputs.values_file }} \
-            --set image.repository=ghcr.io/${OWNER_LC}/devops-exam-kalytyn \
-            --set image.tag=${{ steps.vars.outputs.image_tag }} \
-            > rendered.yaml
-
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
-
-      - name: Get Droplet IP from remote state
-        id: tf
-        working-directory: task1/infra
-        run: |
-          terraform init
-          echo "ip=$(terraform output -raw droplet_ipv4)" >> $GITHUB_OUTPUT
-
-      - name: Prepare SSH key
-        run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
-          chmod 600 ~/.ssh/id_rsa
-
-      - name: Copy chart to server
-        run: |
-          ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa root@${{ steps.tf.outputs.ip }} "rm -rf /root/task3-chart && mkdir -p /root/task3-chart"
-          scp -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa -r task3/chart/* root@${{ steps.tf.outputs.ip }}:/root/task3-chart/
-
-      - name: Dry-run deploy on remote cluster
-        run: |
-          ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa root@${{ steps.tf.outputs.ip }} "
-            kubectl get ns ${{ steps.vars.outputs.namespace }} >/dev/null 2>&1 || kubectl create ns ${{ steps.vars.outputs.namespace }};
-            helm upgrade --install ${{ steps.vars.outputs.release_name }} /root/task3-chart \
-              -n ${{ steps.vars.outputs.namespace }} \
-              -f /root/task3-chart/values.yaml \
-              -f /root/task3-chart/${{ steps.vars.outputs.values_file }} \
-              --set image.repository=ghcr.io/${OWNER_LC}/devops-exam-kalytyn \
-              --set image.tag=${{ steps.vars.outputs.image_tag }} \
-              --dry-run
-          "
-
-      - name: Deploy to Minikube
-        run: |
-          ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa root@${{ steps.tf.outputs.ip }} "
-            helm upgrade --install ${{ steps.vars.outputs.release_name }} /root/task3-chart \
-              -n ${{ steps.vars.outputs.namespace }} \
-              --create-namespace \
-              -f /root/task3-chart/values.yaml \
-              -f /root/task3-chart/${{ steps.vars.outputs.values_file }} \
-              --set image.repository=ghcr.io/${OWNER_LC}/devops-exam-kalytyn \
-              --set image.tag=${{ steps.vars.outputs.image_tag }}
-          "
+        - name: Rollback (manual)
+          if: ${{ github.event.inputs.rollback == 'true' }}
+          run: |
+            kubectl rollout undo deployment/devops-exam -n ${{ steps.vars.outputs.namespace }}
