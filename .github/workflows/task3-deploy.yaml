@@ -67,11 +67,11 @@ jobs:
 
       - name: Validate manifests (dry-run)
         run: |
-          kubectl apply -f task3/k8s/${{ steps.vars.outputs.namespace }}/ --dry-run=client -n ${{ steps.vars.outputs.namespace }}
+          kubectl apply -f k8s/${{ steps.vars.outputs.namespace }}/ --dry-run=client -n ${{ steps.vars.outputs.namespace }}
 
       - name: Deploy to DOKS
         run: |
-          kubectl apply -f task3/k8s/${{ steps.vars.outputs.namespace }}/ -n ${{ steps.vars.outputs.namespace }}
+          kubectl apply -f k8s/${{ steps.vars.outputs.namespace }}/ -n ${{ steps.vars.outputs.namespace }}
 
       - name: Rollback (manual)
         if: ${{ github.event.inputs.rollback == 'true' }}
