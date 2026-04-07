@@ -47,6 +47,9 @@ jobs:
           ref: ${{ steps.vars.outputs.source_ref }}
           path: app
 
+      - name: Debug workspace files
+        run: ls -lR $GITHUB_WORKSPACE
+
       - name: Login to DockerHub
         run: echo $DOCKERHUB_PASS | docker login -u $DOCKERHUB_USER --password-stdin
 
