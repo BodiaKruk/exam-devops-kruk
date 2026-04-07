@@ -17,7 +17,7 @@ spec:
       - name: devops-exam
         image: bodia27/devops-exam:1.0.0
         ports:
-        - containerPort: 8003
+        - containerPort: 8000
 ---
 apiVersion: v1
 kind: Service
@@ -30,4 +30,4 @@ spec:
     app: devops-exam
   ports:
     - port: 8003
-      targetPort: 8003
+      targetPort: 8000
