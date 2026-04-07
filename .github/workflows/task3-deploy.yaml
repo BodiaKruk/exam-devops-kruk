@@ -61,6 +61,9 @@ jobs:
       - name: Set up kubectl
         uses: azure/setup-kubectl@v3
 
+      - name: List files for debug
+        run: ls -lR
+
       - name: Create namespace if not exists
         run: |
           kubectl get ns ${{ steps.vars.outputs.namespace }} || kubectl create ns ${{ steps.vars.outputs.namespace }}
