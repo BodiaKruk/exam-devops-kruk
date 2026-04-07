@@ -1,84 +1,79 @@
+name: task3-app-deploy
 
-  name: task3-app-deploy
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Choose deployment environment"
+        required: true
+        default: "dev"
+        type: choice
+        options:
+          - dev
+          - release
 
-  on:
-    workflow_dispatch:
-      inputs:
-        environment:
-          description: "Choose deployment environment"
-          required: true
-          default: "dev"
-          type: choice
-          options:
-            - dev
-            - release
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    env:
+      DOCKERHUB_USER: ${{ secrets.DOCKERHUB_USER }}
+      DOCKERHUB_PASS: ${{ secrets.DOCKERHUB_PASS }}
+    steps:
+      - name: Write kubeconfig to file
+        run: echo "${{ secrets.KUBECONFIG }}" > kubeconfig.yaml
 
-  jobs:
-    build-and-deploy:
-      runs-on: ubuntu-latest
-      env:
-        DOCKERHUB_USER: ${{ secrets.DOCKERHUB_USER }}
-        DOCKERHUB_PASS: ${{ secrets.DOCKERHUB_PASS }}
-          - name: Write kubeconfig to file
-            run: echo "${{ secrets.KUBECONFIG }}" > kubeconfig.yaml
+      - name: Set KUBECONFIG env
+        run: echo "KUBECONFIG=$PWD/kubeconfig.yaml" >> $GITHUB_ENV
 
-          - name: Set KUBECONFIG env
-            run: echo "KUBECONFIG=$PWD/kubeconfig.yaml" >> $GITHUB_ENV
-      steps:
-        - name: Set environment variables
-          id: vars
-          run: |
-            if [ "${{ inputs.environment }}" = "dev" ]; then
-              echo "source_ref=develop" >> $GITHUB_OUTPUT
-              echo "image_tag=develop" >> $GITHUB_OUTPUT
-              echo "namespace=dev" >> $GITHUB_OUTPUT
-              echo "port=8002" >> $GITHUB_OUTPUT
-            else
-              echo "source_ref=1.0.0" >> $GITHUB_OUTPUT
-              echo "image_tag=1.0.0" >> $GITHUB_OUTPUT
-              echo "namespace=release" >> $GITHUB_OUTPUT
-              echo "port=8003" >> $GITHUB_OUTPUT
-            fi
+      - name: Set environment variables
+        id: vars
+        run: |
+          if [ "${{ inputs.environment }}" = "dev" ]; then
+            echo "source_ref=develop" >> $GITHUB_OUTPUT
+            echo "image_tag=develop" >> $GITHUB_OUTPUT
+            echo "namespace=dev" >> $GITHUB_OUTPUT
+            echo "port=8002" >> $GITHUB_OUTPUT
+          else
+            echo "source_ref=1.0.0" >> $GITHUB_OUTPUT
+            echo "image_tag=1.0.0" >> $GITHUB_OUTPUT
+            echo "namespace=release" >> $GITHUB_OUTPUT
+            echo "port=8003" >> $GITHUB_OUTPUT
+          fi
 
-        - name: Checkout app source
-          uses: actions/checkout@v4
-          with:
-            repository: YulianSalo/devops-exam-pt2
-            ref: ${{ steps.vars.outputs.source_ref }}
-            path: app
+      - name: Checkout app source
+        uses: actions/checkout@v4
+        with:
+          repository: YulianSalo/devops-exam-pt2
+          ref: ${{ steps.vars.outputs.source_ref }}
+          path: app
 
-        - name: Login to DockerHub
-          run: echo $DOCKERHUB_PASS | docker login -u $DOCKERHUB_USER --password-stdin
+      - name: Login to DockerHub
+        run: echo $DOCKERHUB_PASS | docker login -u $DOCKERHUB_USER --password-stdin
 
-        - name: Build Docker image
-          run: |
-            docker build -t $DOCKERHUB_USER/devops-exam:${{ steps.vars.outputs.image_tag }} app
+      - name: Build Docker image
+        run: |
+          docker build -t $DOCKERHUB_USER/devops-exam:${{ steps.vars.outputs.image_tag }} app
 
-        - name: Push Docker image
-          run: |
-            docker push $DOCKERHUB_USER/devops-exam:${{ steps.vars.outputs.image_tag }}
+      - name: Push Docker image
+        run: |
+          docker push $DOCKERHUB_USER/devops-exam:${{ steps.vars.outputs.image_tag }}
 
-        - name: Set up kubectl
-          uses: azure/setup-kubectl@v3
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v3
 
-        - name: Set KUBECONFIG
-          run: |
-            mkdir -p $HOME/.kube
-            echo "$KUBECONFIG" > $HOME/.kube/config
+      - name: Create namespace if not exists
+        run: |
+          kubectl get ns ${{ steps.vars.outputs.namespace }} || kubectl create ns ${{ steps.vars.outputs.namespace }}
 
-        - name: Create namespace if not exists
-          run: |
-            kubectl get ns ${{ steps.vars.outputs.namespace }} || kubectl create ns ${{ steps.vars.outputs.namespace }}
+      - name: Validate manifests (dry-run)
+        run: |
+          kubectl apply -f task3/k8s/${{ steps.vars.outputs.namespace }}/ --dry-run=client -n ${{ steps.vars.outputs.namespace }}
 
-        - name: Validate manifests (dry-run)
-          run: |
-            kubectl apply -f task3/k8s/${{ steps.vars.outputs.namespace }}/ --dry-run=client -n ${{ steps.vars.outputs.namespace }}
+      - name: Deploy to DOKS
+        run: |
+          kubectl apply -f task3/k8s/${{ steps.vars.outputs.namespace }}/ -n ${{ steps.vars.outputs.namespace }}
 
-        - name: Deploy to DOKS
-          run: |
-            kubectl apply -f task3/k8s/${{ steps.vars.outputs.namespace }}/ -n ${{ steps.vars.outputs.namespace }}
-
-        - name: Rollback (manual)
-          if: ${{ github.event.inputs.rollback == 'true' }}
-          run: |
-            kubectl rollout undo deployment/devops-exam -n ${{ steps.vars.outputs.namespace }}
+      - name: Rollback (manual)
+        if: ${{ github.event.inputs.rollback == 'true' }}
+        run: |
+          kubectl rollout undo deployment/devops-exam -n ${{ steps.vars.outputs.namespace }}
