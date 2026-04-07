@@ -40,8 +40,8 @@ jobs:
             echo "port=8003" >> $GITHUB_OUTPUT
           fi
 
-      - name: Checkout main repo
-        uses: actions/checkout@v4
+        - name: Checkout main repo
+          uses: actions/checkout@v4
 
       - name: Checkout app source
         uses: actions/checkout@v4
