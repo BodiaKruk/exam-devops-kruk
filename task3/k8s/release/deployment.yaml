@@ -25,10 +25,9 @@ metadata:
   name: devops-exam
   namespace: release
 spec:
-  type: NodePort
+  type: LoadBalancer
   selector:
     app: devops-exam
   ports:
     - port: 8003
       targetPort: 8003
-      nodePort: 30083

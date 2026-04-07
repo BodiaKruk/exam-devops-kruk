@@ -25,10 +25,9 @@ metadata:
   name: devops-exam
   namespace: dev
 spec:
-  type: NodePort
+  type: LoadBalancer
   selector:
     app: devops-exam
   ports:
     - port: 8002
       targetPort: 8002
-      nodePort: 30082
