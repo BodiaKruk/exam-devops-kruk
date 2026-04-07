@@ -19,7 +19,11 @@
       env:
         DOCKERHUB_USER: ${{ secrets.DOCKERHUB_USER }}
         DOCKERHUB_PASS: ${{ secrets.DOCKERHUB_PASS }}
-        KUBECONFIG: ${{ secrets.KUBECONFIG }}
+          - name: Write kubeconfig to file
+            run: echo "${{ secrets.KUBECONFIG }}" > kubeconfig.yaml
+
+          - name: Set KUBECONFIG env
+            run: echo "KUBECONFIG=$PWD/kubeconfig.yaml" >> $GITHUB_ENV
       steps:
         - name: Set environment variables
           id: vars
@@ -68,11 +72,11 @@
 
         - name: Validate manifests (dry-run)
           run: |
-            kubectl apply -f k8s/${{ steps.vars.outputs.namespace }}/ --dry-run=client -n ${{ steps.vars.outputs.namespace }}
+            kubectl apply -f task3/k8s/${{ steps.vars.outputs.namespace }}/ --dry-run=client -n ${{ steps.vars.outputs.namespace }}
 
         - name: Deploy to DOKS
           run: |
-            kubectl apply -f k8s/${{ steps.vars.outputs.namespace }}/ -n ${{ steps.vars.outputs.namespace }}
+            kubectl apply -f task3/k8s/${{ steps.vars.outputs.namespace }}/ -n ${{ steps.vars.outputs.namespace }}
 
         - name: Rollback (manual)
           if: ${{ github.event.inputs.rollback == 'true' }}
