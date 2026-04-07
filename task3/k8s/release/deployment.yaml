@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
       - name: devops-exam
-        image: ghcr.io/exam-devops-kruk/devops-exam:1.0.0
+        image: bodia27/devops-exam:1.0.0
         ports:
         - containerPort: 8003
 ---
